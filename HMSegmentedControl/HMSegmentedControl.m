@@ -13,7 +13,10 @@
 @interface HMScrollView : UIScrollView
 @end
 
-@interface HMSegmentedControl ()
+@interface HMSegmentedControl () {
+    NSMutableArray *_accessibleElements;
+}
+
 
 @property (nonatomic, strong) CALayer *selectionIndicatorStripLayer;
 @property (nonatomic, strong) CALayer *selectionIndicatorBoxLayer;
@@ -176,6 +179,7 @@
 
 - (void)setSectionTitles:(NSArray<NSString *> *)sectionTitles {
     _sectionTitles = sectionTitles;
+    _accessibleElements = nil;
     
     [self setNeedsLayout];
     [self setNeedsDisplay];
@@ -183,6 +187,7 @@
 
 - (void)setSectionImages:(NSArray<UIImage *> *)sectionImages {
     _sectionImages = sectionImages;
+    _accessibleElements = nil;
     
     [self setNeedsLayout];
     [self setNeedsDisplay];
@@ -248,21 +253,16 @@
         return (NSAttributedString *)title;
     } else if (!self.titleFormatter) {
         NSDictionary *titleAttrs = selected ? [self resultingSelectedTitleTextAttributes] : [self resultingTitleTextAttributes];
-        
-        // the color should be cast to CGColor in order to avoid invalid context on iOS7
-        UIColor *titleColor = titleAttrs[NSForegroundColorAttributeName];
-        
-        if (titleColor) {
-            NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithDictionary:titleAttrs];
-            
-            dict[NSForegroundColorAttributeName] = (id)titleColor.CGColor;
-            
-            titleAttrs = [NSDictionary dictionaryWithDictionary:dict];
-        }
-        
         return [[NSAttributedString alloc] initWithString:(NSString *)title attributes:titleAttrs];
     } else {
         return self.titleFormatter(self, title, index, selected);
+    }
+}
+
+-(void)setNeedsDisplay {
+    [super setNeedsDisplay];
+    for (UIView * v in [self.scrollView.subviews copy]) {
+        [v removeFromSuperview];
     }
 }
 
@@ -281,6 +281,9 @@
     self.scrollView.layer.sublayers = nil;
     
     CGRect oldRect = rect;
+    
+    _accessibleElements = nil;
+    _accessibleElements = [[NSMutableArray alloc] init];
     
     if (self.type == HMSegmentedControlTypeText) {
         [self.sectionTitles enumerateObjectsUsingBlock:^(id titleString, NSUInteger idx, BOOL *stop) {
@@ -323,16 +326,21 @@
             // Fix rect position/size to avoid blurry labels
             rect = CGRectMake(ceilf(rect.origin.x), ceilf(rect.origin.y), ceilf(rect.size.width), ceilf(rect.size.height));
             
-            CATextLayer *titleLayer = [CATextLayer layer];
-            titleLayer.frame = rect;
-            titleLayer.alignmentMode = kCAAlignmentCenter;
+            UILabel *titleLabel = [UILabel new];
+            titleLabel.frame = rect;
+            titleLabel.textAlignment = NSTextAlignmentCenter;
+            titleLabel.attributedText = [self attributedTitleAtIndex:idx];
             if ([UIDevice currentDevice].systemVersion.floatValue < 10.0 ) {
-                titleLayer.truncationMode = kCATruncationEnd;
+                titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
             }
-            titleLayer.string = [self attributedTitleAtIndex:idx];
-            titleLayer.contentsScale = [[UIScreen mainScreen] scale];
-            
-            [self.scrollView.layer addSublayer:titleLayer];
+            [self.scrollView addSubview:titleLabel];
+            [titleLabel setIsAccessibilityElement:YES];
+            titleLabel.accessibilityTraits = UIAccessibilityTraitButton;
+            if (self.accessibilityBlock) {
+                BOOL isSelected = idx == self.selectedSegmentIndex;
+                titleLabel.accessibilityLabel = self.accessibilityBlock(self, idx, isSelected);
+            }
+            [_accessibleElements addObject:titleLabel];
             
             // Vertical Divider
             if (self.isVerticalDividerEnabled && idx > 0) {
@@ -354,21 +362,29 @@
             CGFloat x = self.segmentWidth * idx + (self.segmentWidth - imageWidth)/2.0f;
             CGRect rect = CGRectMake(x, y, imageWidth, imageHeight);
             
-            CALayer *imageLayer = [CALayer layer];
-            imageLayer.frame = rect;
+            UIImageView * imageView = [UIImageView new];
+            imageView.frame = rect;
+            imageView.contentMode = UIViewContentModeCenter;
             
             if (self.selectedSegmentIndex == idx) {
                 if (self.sectionSelectedImages) {
                     UIImage *highlightIcon = [self.sectionSelectedImages objectAtIndex:idx];
-                    imageLayer.contents = (id)highlightIcon.CGImage;
+                    [imageView setImage:highlightIcon];
                 } else {
-                    imageLayer.contents = (id)icon.CGImage;
+                    [imageView setImage:icon];
                 }
             } else {
-                imageLayer.contents = (id)icon.CGImage;
+                [imageView setImage:icon];
             }
-            
-            [self.scrollView.layer addSublayer:imageLayer];
+            [self.scrollView addSubview:imageView];
+            [imageView setIsAccessibilityElement:YES];
+            imageView.accessibilityTraits = UIAccessibilityTraitButton;
+            if (self.accessibilityBlock) {
+                BOOL isSelected = idx == self.selectedSegmentIndex;
+                imageView.accessibilityLabel = self.accessibilityBlock(self, idx, isSelected);
+            }
+            [_accessibleElements addObject:imageView];
+
             // Vertical Divider
             if (self.isVerticalDividerEnabled && idx>0) {
                 CALayer *verticalDividerLayer = [CALayer layer];
@@ -423,30 +439,39 @@
             // Fix rect position/size to avoid blurry labels
             textRect = CGRectMake(ceilf(textRect.origin.x), ceilf(textRect.origin.y), ceilf(textRect.size.width), ceilf(textRect.size.height));
 
-            CATextLayer *titleLayer = [CATextLayer layer];
-            titleLayer.frame = textRect;
-            titleLayer.alignmentMode = kCAAlignmentCenter;
-            titleLayer.string = [self attributedTitleAtIndex:idx];
+            UILabel *titleLabel = [UILabel new];
+            titleLabel.frame = textRect;
+            titleLabel.textAlignment = NSTextAlignmentCenter;
+            titleLabel.attributedText = [self attributedTitleAtIndex:idx];
             if ([UIDevice currentDevice].systemVersion.floatValue < 10.0 ) {
-                titleLayer.truncationMode = kCATruncationEnd;
+                titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
             }
-            CALayer *imageLayer = [CALayer layer];
-            imageLayer.frame = imageRect;
+            [titleLabel setIsAccessibilityElement:NO];
+            UIImageView *imageView = [UIImageView new];
+            imageView.frame = imageRect;
 			
             if (self.selectedSegmentIndex == idx) {
                 if (self.sectionSelectedImages) {
                     UIImage *highlightIcon = [self.sectionSelectedImages objectAtIndex:idx];
-                    imageLayer.contents = (id)highlightIcon.CGImage;
+                    [imageView setImage:highlightIcon];
                 } else {
-                    imageLayer.contents = (id)icon.CGImage;
+                    [imageView setImage:icon];
                 }
             } else {
-                imageLayer.contents = (id)icon.CGImage;
+                [imageView setImage:icon];
             }
             
-            [self.scrollView.layer addSublayer:imageLayer];
-			titleLayer.contentsScale = [[UIScreen mainScreen] scale];
-            [self.scrollView.layer addSublayer:titleLayer];
+            [self.scrollView addSubview:imageView];
+            [self.scrollView addSubview:titleLabel];
+            
+            [imageView setIsAccessibilityElement:YES];
+            imageView.accessibilityTraits = UIAccessibilityTraitButton;
+            if (self.accessibilityBlock) {
+                BOOL isSelected = idx == self.selectedSegmentIndex;
+                imageView.accessibilityLabel = self.accessibilityBlock(self, idx, isSelected);
+            }
+            [_accessibleElements addObject:imageView];
+
 			
             [self addBackgroundAndBorderLayerWithRect:imageRect];
         }];
@@ -898,5 +923,35 @@
     
     return [resultingAttrs copy];
 }
+
+#pragma mark - Accessibility
+
+- (NSArray *)accessibleElements
+{
+    return _accessibleElements;
+}
+
+/* The container itself is not accessible, so MultiFacetedView should return NO in isAccessiblityElement. */
+- (BOOL)isAccessibilityElement
+{
+    return NO;
+}
+
+/* The following methods are implementations of UIAccessibilityContainer protocol methods. */
+- (NSInteger)accessibilityElementCount
+{
+    return [[self accessibleElements] count];
+}
+
+- (id)accessibilityElementAtIndex:(NSInteger)index
+{
+    return [[self accessibleElements] objectAtIndex:index];
+}
+
+- (NSInteger)indexOfAccessibilityElement:(id)element
+{
+    return [[self accessibleElements] indexOfObject:element];
+}
+
 
 @end

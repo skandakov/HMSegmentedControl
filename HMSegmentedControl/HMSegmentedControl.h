@@ -12,6 +12,7 @@
 
 typedef void (^IndexChangeBlock)(NSInteger index);
 typedef NSAttributedString *(^HMTitleFormatterBlock)(HMSegmentedControl *segmentedControl, NSString *title, NSUInteger index, BOOL selected);
+typedef NSString *(^HMAccessibilityForItemBlock)(HMSegmentedControl *segmentedControl, NSUInteger index, BOOL selected);
 
 typedef NS_ENUM(NSInteger, HMSegmentedControlSelectionStyle) {
     HMSegmentedControlSelectionStyleTextWidthStripe, // Indicator width will only be as big as the text width
@@ -68,6 +69,8 @@ typedef NS_ENUM(NSInteger, HMSegmentedControlType) {
  When this block is set, no additional styling is applied to the `NSAttributedString` object returned from this block.
  */
 @property (nonatomic, copy) HMTitleFormatterBlock titleFormatter;
+
+@property (nonatomic, copy) HMAccessibilityForItemBlock accessibilityBlock;
 
 /**
  Text attributes to apply to item title text.
